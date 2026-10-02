@@ -1,0 +1,128 @@
+{
+  "_comment": "Model/quant registry for valhalla. llama-swap config (configs/llama-swap.yaml) references models by their 'serve_name'. Update both together, then scripts/deploy.sh.",
+  "updated": "2026-10-01",
+  "hardware_context": "Strix Halo gfx1151, 128 GB unified memory",
+  "models": [
+    {
+      "serve_name": "swift-1.5-27b-q8",
+      "aliases": ["swift-27b", "qwen3.8-27b-agent"],
+      "id": "swift-1.5-27b",
+      "base_model": "ukisai/Swift-1.5-Qwen3.8-27b",
+      "hf_gguf_repo": "ukisai/Swift-1.5-Qwen3.8-27B-GGUF",
+      "hf_include": "*Q8_0*",
+      "type": "dense-27b-gguf",
+      "role": "agentic daily driver (fast, high quality)",
+      "expected_ram_gib": 30
+    },
+    {
+      "serve_name": "swift-flash-next",
+      "aliases": ["swift-flash-next-ik", "swift-flash-next-iq3m"],
+      "id": "swift-1.5-flash-next",
+      "base_model": "ukisai/Swift1.5-Qwen3.8-Flash-Next",
+      "hf_gguf_repo": "ukisai/Swift-1.5-Qwen3.8-Flash-Next-GGUF",
+      "hf_include": "IQ3_M/*",
+      "type": "moe-hybrid-gguf",
+      "role": "Swift flagship — ik_llama.cpp CPU path (--defer-ple engrams non-resident, --defer-experts disk-paged, MTP self-contained Q8_0 head, acceptance 0.73)",
+      "measured": {"decode_tps_4k": 22.5, "decode_tps_16k": 20.0},
+      "expected_ram_gib": 95,
+      "notes": [
+        "beats the GPU-hybrid 16.2 t/s by ~40% on decode; GPU path wins prefill (~900 vs ~230 t/s cold)",
+        "trunk mixed-quant: ffn_down_exps Q5_1 (5.07bpw), gate/up IQ3_S; engrams IQ4_NL 26.8GiB (same as stock)"
+      ]
+    },
+    {
+      "serve_name": "gufo-27b-q4",
+      "aliases": ["gufo-27b"],
+      "id": "qwen3.8-27b-gufo-q4",
+      "base_model": "Qwen/Qwen3.8-27B",
+      "hf_gguf_repo": "unsloth/Qwen3.8-27B-GGUF",
+      "hf_include": "Qwen3.8-27B-UD-Q4_K_XL.gguf",
+      "hf_revision": "4ca720788d1e01f1bff70c033e0d0028fd02e502",
+      "type": "dense-27b-gguf-gufo",
+      "role": "DAILY DRIVER (promoted 2026-10-01): gufo + DFlash2, 34-36 t/s decode (2.3x llama.cpp MTP), 6/6 retrieval, 8/8 tools, ~19s load",
+      "measured": {"decode_tps_4k": 34.0, "smoke": 36.1},
+      "engine": "gufo serve llm (container ghcr.io/gufo-org/toolboxes/gufo-runtime) + z-lab DFlash2 Q4_K_M head"
+    },
+    {
+      "serve_name": "gufo-27b-q8",
+      "aliases": ["gufo-27b-accuracy"],
+      "id": "qwen3.8-27b-gufo-q8",
+      "base_model": "Qwen/Qwen3.8-27B",
+      "hf_gguf_repo": "unsloth/Qwen3.8-27B-GGUF",
+      "hf_include": "Qwen3.8-27B-UD-Q8_K_XL.gguf",
+      "hf_revision": "4ca720788d1e01f1bff70c033e0d0028fd02e502",
+      "type": "dense-27b-gguf-gufo",
+      "role": "accuracy-max daily driver: gufo + DFlash2 at Q8_K_XL, 22.9 t/s (1.5x llama.cpp Q8 MTP)",
+      "measured": {"decode_tps_4k": 22.9},
+      "engine": "gufo serve llm (container) + z-lab DFlash2 Q4_K_M head"
+    },
+    {
+      "serve_name": "gufo-flash-next",
+      "aliases": ["flash-next-fullctx", "gufo-flashnext"],
+      "id": "qwen3.8-flash-next-gufo-local",
+      "base_model": "Qwen/Qwen3.8-Flash-Next",
+      "hf_gguf_repo": "unsloth/Qwen3.8-Flash-Next-GGUF",
+      "hf_include": "UD-Q4_K_XL/*",
+      "hf_revision": "38bb39ee97821de2c9009abb7e93950eec396e66",
+      "type": "moe-hybrid-gguf-gufo-local",
+      "role": "FLAGSHIP: gufo (valhalla fork valhalla/managed-fallback, local build) full native 262144 ctx, MTP; decode flat 29-35 t/s 4k-131k, 6/6 needles to 131k, 8/8 tools, 22s load",
+      "engine": "~/src/gufo/build/release/gufo (branch valhalla/managed-fallback: weights->hipMallocManaged, device pool for session state)",
+      "sibling": "gufo-flash-next-parallel (sessions 2 x 131072, same weights)"
+    },
+    {
+      "serve_name": "swift-flash-next-gpuhybrid",
+      "aliases": ["swift-flash-next-gpu"],
+      "id": "swift-1.5-flash-next-gpuhybrid",
+      "base_model": "ukisai/Swift1.5-Qwen3.8-Flash-Next",
+      "hf_gguf_repo": "ukisai/Swift-1.5-Qwen3.8-Flash-Next-GGUF",
+      "hf_include": "IQ3_M/*",
+      "type": "moe-hybrid-gguf",
+      "role": "Swift alternative — unsloth fork GPU-hybrid (fast prefill ~900 t/s, 16.2 t/s decode, MTP shared-Q8_0 head)",
+      "measured": {"decode_tps_4k": 16.2, "decode_tps_32k": 15.7},
+      "expected_ram_gib": 95
+    },
+    {
+      "serve_name": "flash-next-gsq",
+      "aliases": ["qwen3.8-flash-next"],
+      "id": "qwen3.8-flash-next",
+      "base_model": "Qwen/Qwen3.8-Flash-Next",
+      "hf_gguf_repo": "ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF",
+      "hf_include": "IQ3_S/*",
+      "type": "moe-hybrid-gguf",
+      "role": "big-model flex tier (baseline to compare against Swift-1.5)",
+      "expected_ram_gib": 85
+    }
+  ],
+  "mtp_draft": {
+    "file": "unsloth/MTP-shared/MTP/mtp-Qwen3.8-Flash-Next-shared-Q8_0.gguf",
+    "source_repo": "unsloth/Qwen3.8-Flash-Next-GGUF",
+    "measured": {
+      "flash-next-gsq_acceptance": 0.75,
+      "swift-27b-embedded_acceptance": 0.86
+    },
+    "notes": [
+      "requires unslothai/llama.cpp fork (prebuilt b11160-mix-a6922cc rocm-gfx1151) at ~/src/unsloth-bin",
+      "shared-Q8_0 recommended by unsloth; logs one benign borrow error at startup",
+      "MTP wins at concurrency 1-2 (agents); net loss at >=8",
+      "always pass -md explicitly; sidecar discovery does not search MTP/ subfolders"
+    ]
+  },
+  "halogen": {
+    "serve_name": "halogen-flash-next",
+    "hf_weights_repo": "peonist-ai/halogen-qwen3.8-flash-next",
+    "format": ".hgn (halogen-flash-server only)",
+    "role": "flagship quality + long context (exclusive mode)",
+    "expected_ram_gib": 110,
+    "notes": [
+      "v2 checkpoint 62.1 GiB + 47.7 GiB paged n-gram table",
+      "HALOGEN_INDEXER_BUDGET=4096 for better retrieval (accuracy-first)",
+      "HALOGEN_VISION_TOWER=1 for image input",
+      "HALOGEN_COMPOSABLE_CONTEXT=1 for compacted-conversation tool-result reuse"
+    ]
+  },
+  "deferred": [
+    {"repo": "ukisai/Swift-1.5-Qwen3.8-Flash-Next-GGUF", "why": "compare UD-style vs GSQ-RCO quants in llama.cpp"},
+    {"repo": "turboderp/Qwen3.8-Flash-Next-exl3", "why": "ExLlamaV3/TabbyAPI accuracy-per-bit challenger"},
+    {"repo": "Quat3rnion/halogen-swift1.5-qwen3.8-flash-next-v2", "why": "Swift-1.5 in halogen lineage; watch for .hgn support"}
+  ]
+}

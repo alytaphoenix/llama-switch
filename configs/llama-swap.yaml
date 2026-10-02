@@ -1,0 +1,66 @@
+# llama-swap production config for valhalla — CLEANED 2026-10-02.
+# Exactly two engines serve :8731: the gufo Flash-Next flagship and the gufo
+# 27B daily driver; llama-swap swaps between them on demand.
+#
+# Both are gufo (built LOCALLY for the flagship — valhalla fork, branch
+# valhalla/managed-fallback; upstream container for the 27B). Deployed to
+# ~/valhalla/etc/llama-swap.yaml by scripts/deploy.sh (@HOME@ rendered).
+#
+# Verified numbers (benchmarks/DECISIONS.md):
+#   gufo-flash-next : 262144 ctx, MTP; decode flat 29-35 t/s d0-d131k;
+#                     needle 6/6 @16k/32k/64k + 3/3 @131k; tools 8/8; 22s load
+#   gufo-27b-q4     : 34 t/s (DFlash2); needle 6/6; tools 8/8; ~19s load
+
+healthCheckTimeout: 120
+logLevel: info
+logToStdout: "proxy,upstream"
+startPort: 9801
+
+models:
+  # ------------------------------------------------- Flash-Next flagship
+  # gufo local build (weights -> hipMallocManaged, device pool for session state)
+  "gufo-flash-next":
+    cmd: |
+      @HOME@/src/gufo/build/release/gufo serve --host 127.0.0.1 --port ${PORT} llm \
+        --model @HOME@/valhalla/models/unsloth/Qwen3.8-Flash-Next-GGUF/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf \
+        --speculative mtp \
+        --mtp-model @HOME@/valhalla/models/unsloth/MTP-shared/MTP/mtp-Qwen3.8-Flash-Next-shared-Q8_0.gguf \
+        --sessions 1 --context 262144
+    env:
+      - LD_LIBRARY_PATH=/opt/rocm/lib
+    useModelName: "Qwen3.8 Flash Next"
+    aliases:
+      - valhalla-flash-next
+      - qwen3.8-flash-next
+    ttl: 900
+
+  # ------------------------------------------------------- 27B daily driver
+  # gufo upstream container (mapped-GGUF placement fits the device pool)
+  "gufo-27b-q4":
+    cmd: |
+      podman run --rm --name gufo-27b-q4 \
+        --userns=keep-id:uid=1000,gid=1000 \
+        --device /dev/kfd --device /dev/dri --group-add keep-groups \
+        --ulimit memlock=-1 \
+        -p 127.0.0.1:${PORT}:8080 \
+        -v @HOME@/valhalla/models:/models:ro \
+        ghcr.io/gufo-org/toolboxes/gufo-runtime:latest \
+        gufo serve --host 0.0.0.0 --port 8080 llm \
+        --model /models/unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-UD-Q4_K_XL.gguf \
+        --speculative dflash2 \
+        --dflash-model /models/z-lab/Qwen3.8-27B-DFlash2-GGUF/Qwen3.8-27B-DFlash2-Q4_K_M.gguf \
+        --sessions 2 --context 65536
+    cmdStop: podman rm -f gufo-27b-q4
+    env:
+      - LD_LIBRARY_PATH=/opt/rocm/lib
+    useModelName: "Qwen3.8-27B"
+    aliases:
+      - valhalla-27b
+    ttl: 900
+
+groups:
+  "big":
+    swap: true
+    members:
+      - gufo-flash-next
+      - gufo-27b-q4
