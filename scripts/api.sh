@@ -15,12 +15,12 @@
 #   scripts/api.sh switch <model>    -> unload all, then load target
 #
 # Every target is env-overridable before sourcing env.sh:
-#   VALHALLA_ADDR=192.168.0.142 VALHALLA_API_PORT=8731 scripts/api.sh status
+#   LS_ADDR=<ip> LS_API_PORT=8731 scripts/api.sh status
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # shellcheck source=scripts/env.sh
 source scripts/env.sh
-base="http://$VALHALLA_ADDR:$VALHALLA_API_PORT"
+base="http://$LS_ADDR:$LS_API_PORT"
 
 die() { echo "api.sh: $1" >&2; exit "${2:-4}"; }
 

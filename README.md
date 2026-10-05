@@ -92,6 +92,7 @@ scripts/
   deploy.sh               rsync repo + configs to the box (configs rendered)
   mode.sh                 flex|exclusive|status|stop-all (+ stray cleanup)
   switch.sh               status|list|load|unload|switch (programmatic switching)
+  api.sh                  machine-readable twin of switch.sh (raw JSON + exit codes)
   jobs.sh                 long-running remote jobs with pidfiles + logs
   smoke.sh                single tiny chat completion against whatever serves
   tunnel.sh               SSH tunnel for localhost clients
@@ -194,7 +195,7 @@ JSON on stdout, no prose, and exit codes automation can branch on
 point for programmatic LAN control — the Switchyard routing proxy's
 loadbalancer and its `lan-switch.py` utility drive the box through these
 calls (status/load/unload/switch over the llama-swap endpoints). All
-targets are env-overridable (`VALHALLA_ADDR`, `VALHALLA_API_PORT`), so the
+targets are env-overridable (`LS_ADDR`, `LS_API_PORT`), so the
 same calls work from any host that can reach the box.
 
 ## Gotchas
