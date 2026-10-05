@@ -30,6 +30,7 @@ client machine.
 - The APU runtime caps `hipMalloc` at the reported device pool (RAM/2+VRAM);
   `hipMallocManaged` escapes it (checksums verified) and is performance-
   neutral for read-only weights on the APU.
+- Automation (Switchyard loadbalancer, `lan-switch.py`) consumes `scripts/api.sh` — raw JSON + exit codes, never `switch.sh`'s human formatting.
 - Remote jobs: `> log 2>&1 < /dev/null &` + pidfiles (`scripts/jobs.sh`).
 - `apt-get update` may fail on broken third-party repos; scripts tolerate it.
 - Vulkan device heap on iGPUs = BIOS carve-out only; big trunks need HIP.

@@ -149,6 +149,17 @@ Example results and the full decision log live in `benchmarks/DECISIONS.md`
 (single-stream greedy: Flash-Next at multiple quants, a Swift-1.5 fine-tune
 in three serving layouts, and a dense 27B with MTP/DFlash2).
 
+## Switchyard integration (programmatic LAN control)
+
+`scripts/api.sh` is the machine-readable twin of `scripts/switch.sh`: raw
+JSON on stdout, no prose, and exit codes automation can branch on
+(0 OK · 2 unreachable · 3 usage · 4 HTTP error). It is the supported entry
+point for programmatic LAN control — the Switchyard routing proxy's
+loadbalancer and its `lan-switch.py` utility drive the box through these
+calls (status/load/unload/switch over the llama-swap endpoints). All
+targets are env-overridable (`VALHALLA_ADDR`, `VALHALLA_API_PORT`), so the
+same calls work from any host that can reach the box.
+
 ## Gotchas
 
 Everything below cost real time — encoded here so it costs none of yours:
