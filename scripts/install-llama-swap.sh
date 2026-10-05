@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install llama-swap (single static binary) on valhalla → ~/bin/llama-swap
+# Install llama-swap (single static binary) on the serving box → ~/bin/llama-swap
 # Run via: scripts/jobs.sh run llama-swap scripts/install-llama-swap.sh
 set -euo pipefail
 

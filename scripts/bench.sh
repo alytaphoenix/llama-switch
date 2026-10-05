@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Run the API benchmark suite against whatever is serving :8731 (either mode).
-#   MODEL=swift-1.5-27b-q8 scripts/bench.sh
-#   URL=http://localhost:8731 MODEL=halogen-flash-next scripts/bench.sh
+#   MODEL=my-model scripts/bench.sh
+#   URL=http://localhost:8731 MODEL=my-model scripts/bench.sh
 #   CTXS=4096,16384 CTX_MAX... see vars below
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # shellcheck source=scripts/env.sh
 source scripts/env.sh
 
-url="${URL:-http://$VALHALLA_ADDR:$VALHALLA_API_PORT}"
+url="${URL:-http://$LS_ADDR:$LS_API_PORT}"
 model="${MODEL:?set MODEL=<served model name>}"
 ctxs="${CTXS:-4096,16384,32768,65536}"
 needle_ctxs="${NEEDLE_CTXS:-16384,32768}"

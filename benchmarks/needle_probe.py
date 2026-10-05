@@ -6,7 +6,7 @@ recall it, and checks exact-substring hit. One JSON line per trial, then a
 {"summary": {...}} line.
 
 Usage:
-  needle_probe.py --url http://valhalla:8731 --model swift-1.5-27b-q8 \
+  needle_probe.py --url http://<box>:8731 --model <served-name> \
                   --ctxs 16384,32768 --depths 0.25,0.5,0.75
 """
 import argparse

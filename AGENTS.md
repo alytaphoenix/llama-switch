@@ -22,8 +22,11 @@ client machine.
 
 ## Facts that live in the code
 
-- One port for everything (`VALHALLA_API_PORT`, default 8731). Clients never
+- One port for everything (`LS_API_PORT`, default 8731). Clients never
   reconfigure.
+- Two exclusive modes share the port: **flex** (llama-swap, on-demand GGUF)
+  and **exclusive** (a single engine that wants the whole machine, e.g. the
+  halogen container engine — engines are swappable, the mode is not).
 - llama-swap multi-line `cmd` REQUIRES trailing backslashes.
 - Upstream engines check the forwarded model string: set `--served-model-name`
   or llama-swap `useModelName`.

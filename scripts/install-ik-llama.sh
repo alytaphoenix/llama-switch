@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build ik_llama.cpp (CPU, Zen5 AVX-512 IQK path) on valhalla → ~/bin/ik-server
+# Build ik_llama.cpp (CPU, Zen5 AVX-512 IQK path) on the serving box → ~/bin/ik-server
 # Run via: scripts/jobs.sh run ik-server scripts/install-ik-llama.sh
 set -euo pipefail
 

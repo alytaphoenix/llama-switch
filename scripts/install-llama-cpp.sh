@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build llama.cpp (Vulkan backend) on valhalla → ~/bin/llama-server etc.
+# Build llama.cpp (Vulkan backend) on the serving box → ~/bin/llama-server etc.
 # Run via: scripts/jobs.sh run llama-cpp scripts/install-llama-cpp.sh
 set -euo pipefail
 

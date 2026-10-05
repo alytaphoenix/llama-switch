@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Hardware/runtime survey of valhalla. Appends a timestamped log to
+# Hardware/runtime survey of the serving box. Appends a timestamped log to
 # benchmarks/results/ and prints it. Safe: read-only on the remote.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # shellcheck source=scripts/env.sh
 source scripts/env.sh
-require_valhalla
+require_remote
 mkdir -p "$BENCH_DIR"
 ts=$(date +%F_%H%M%S)
 out="$BENCH_DIR/hw-survey-$ts.log"

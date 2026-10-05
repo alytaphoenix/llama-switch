@@ -1,19 +1,22 @@
 #!/usr/bin/env bash
-# Remote-side library. Runs ON valhalla (sourced via ssh from mode.sh / jobs).
-# Deployed copy: ~/valhalla/repo/scripts/remote-lib.sh
+# Remote-side library. Runs ON the serving box (sourced via ssh from mode.sh).
+# Deployed copy: ~/llama-switch/repo/scripts/remote-lib.sh
 # shellcheck shell=bash
 set -u
 
-REPO="$HOME/valhalla/repo"
-ETC="$HOME/valhalla/etc"
-RUN="$HOME/valhalla/run"
-LOGS="$HOME/valhalla/logs"
+ROOT="$HOME/llama-switch"
+REPO="$ROOT/repo"
+ETC="$ROOT/etc"
+RUN="$ROOT/run"
+LOGS="$ROOT/logs"
 BIN="$HOME/bin"
-PORT="${VALHALLA_API_PORT:-8731}"
+PORT="${LS_API_PORT:-8731}"
 
-# Your existing halogen stack (podman-compose, systemd user unit)
-HALOGEN_COMPOSE_DIR="/srv/backends/halogen"
-HALOGEN_SYSTEMD_UNIT="podman-compose@halogen.service"
+# The exclusive stack (podman-compose, optionally a systemd user unit).
+# Overridable via the environment when this file is sourced.
+EXCLUSIVE_COMPOSE_DIR="${EXCLUSIVE_COMPOSE_DIR:-$ROOT/stack}"
+EXCLUSIVE_SYSTEMD_UNIT="${EXCLUSIVE_SYSTEMD_UNIT:-podman-compose@exclusive.service}"
+EXCLUSIVE_CONTAINER_MATCH="${EXCLUSIVE_CONTAINER_MATCH:-exclusive}"
 
 mkdir -p "$RUN" "$LOGS" 2>/dev/null || true
 
@@ -33,30 +36,30 @@ stop_llama_swap() {
   fi
 }
 
-stop_halogen() {
-  if systemctl is-active --user "$HALOGEN_SYSTEMD_UNIT" >/dev/null 2>&1; then
-    systemctl --user stop "$HALOGEN_SYSTEMD_UNIT" && echo "halogen compose stopped (user systemd)"
-  elif systemctl is-active "$HALOGEN_SYSTEMD_UNIT" >/dev/null 2>&1; then
-    sudo -n systemctl stop "$HALOGEN_SYSTEMD_UNIT" && echo "halogen compose stopped (system systemd)"
-  elif podman ps --format '{{.Names}}' 2>/dev/null | grep -q halogen; then
-    (cd "$HALOGEN_COMPOSE_DIR" && podman-compose down) && echo "halogen compose down (podman-compose)"
+exclusive_running() { podman ps --format '{{.Names}}' 2>/dev/null | grep -E -q "$EXCLUSIVE_CONTAINER_MATCH"; }
+
+stop_exclusive() {
+  if systemctl is-active --user "$EXCLUSIVE_SYSTEMD_UNIT" >/dev/null 2>&1; then
+    systemctl --user stop "$EXCLUSIVE_SYSTEMD_UNIT" && echo "exclusive stack stopped (user systemd)"
+  elif systemctl is-active "$EXCLUSIVE_SYSTEMD_UNIT" >/dev/null 2>&1; then
+    sudo -n systemctl stop "$EXCLUSIVE_SYSTEMD_UNIT" && echo "exclusive stack stopped (system systemd)"
+  elif exclusive_running; then
+    (cd "$EXCLUSIVE_COMPOSE_DIR" && podman-compose down) && echo "exclusive stack down (podman-compose)"
   else
-    echo "halogen not running"
+    echo "exclusive stack not running"
   fi
 }
 
 # ------------------------------------------------------------------ guards
-# Ops rule learned 2026-10-01: loading a big GGUF while halogen holds memory
-# freezes the box (all TCP down, ICMP alive). Guard against it.
-halogen_running() { podman ps --format '{{.Names}}' 2>/dev/null | grep -q halogen; }
-
+# Ops rule: loading a big GGUF while the exclusive stack holds most of the
+# memory can freeze the box (all TCP down, ICMP alive). Guard against it.
 mem_free_gib() { free -g | awk '/^Mem:/{print $7}'; }
 
 start_llama_swap() {
   if pid_alive "$RUN/llama-swap.pid"; then echo "llama-swap already running"; return 0; fi
-  if halogen_running; then
-    echo "ERROR: halogen containers are running — they hold most of the RAM." >&2
-    echo "Switch first:  bash $REPO/scripts/mode.sh flex   (stops halogen, starts llama-swap)" >&2
+  if exclusive_running; then
+    echo "ERROR: exclusive stack containers are running — they hold most of the RAM." >&2
+    echo "Switch first:  bash $REPO/scripts/mode.sh flex   (stops the stack, starts llama-swap)" >&2
     return 1
   fi
   if [ ! -x "$BIN/llama-swap" ]; then
@@ -73,19 +76,19 @@ start_llama_swap() {
   echo "llama-swap started (pid $(cat "$RUN/llama-swap.pid"))"
 }
 
-start_halogen() {
-  if [ ! -d "$HALOGEN_COMPOSE_DIR" ]; then
-    echo "ERROR: $HALOGEN_COMPOSE_DIR not found" >&2
+start_exclusive() {
+  if [ ! -d "$EXCLUSIVE_COMPOSE_DIR" ]; then
+    echo "ERROR: $EXCLUSIVE_COMPOSE_DIR not found" >&2
     return 1
   fi
-  if systemctl is-enabled --user "$HALOGEN_SYSTEMD_UNIT" >/dev/null 2>&1 || \
-     systemctl list-units --user --all 2>/dev/null | grep -q "$HALOGEN_SYSTEMD_UNIT"; then
-    systemctl --user start "$HALOGEN_SYSTEMD_UNIT" && echo "halogen compose started (user systemd)"
-  elif systemctl is-enabled "$HALOGEN_SYSTEMD_UNIT" >/dev/null 2>&1 || \
-       systemctl list-units --all 2>/dev/null | grep -q "$HALOGEN_SYSTEMD_UNIT"; then
-    sudo -n systemctl start "$HALOGEN_SYSTEMD_UNIT" && echo "halogen compose started (system systemd)"
+  if systemctl is-enabled --user "$EXCLUSIVE_SYSTEMD_UNIT" >/dev/null 2>&1 || \
+     systemctl list-units --user --all 2>/dev/null | grep -q "$EXCLUSIVE_SYSTEMD_UNIT"; then
+    systemctl --user start "$EXCLUSIVE_SYSTEMD_UNIT" && echo "exclusive stack started (user systemd)"
+  elif systemctl is-enabled "$EXCLUSIVE_SYSTEMD_UNIT" >/dev/null 2>&1 || \
+       systemctl list-units --all 2>/dev/null | grep -q "$EXCLUSIVE_SYSTEMD_UNIT"; then
+    sudo -n systemctl start "$EXCLUSIVE_SYSTEMD_UNIT" && echo "exclusive stack started (system systemd)"
   else
-    (cd "$HALOGEN_COMPOSE_DIR" && podman-compose up -d) && echo "halogen compose started (podman-compose)"
+    (cd "$EXCLUSIVE_COMPOSE_DIR" && podman-compose up -d) && echo "exclusive stack started (podman-compose)"
   fi
 }
 
@@ -105,7 +108,7 @@ kill_stray_servers() {
 }
 
 mode_flex() {
-  stop_halogen
+  stop_exclusive
   stop_llama_swap
   kill_stray_servers
   start_llama_swap || return 1
@@ -116,18 +119,18 @@ mode_flex() {
   echo "WARN: llama-swap up but :$PORT health not 200 yet (check $LOGS/llama-swap.log)"
 }
 
-mode_halogen() {
+mode_exclusive() {
   stop_llama_swap
-  start_halogen || return 1
-  echo "halogen starting — first load after downtime can take minutes;"
+  start_exclusive || return 1
+  echo "exclusive stack starting — first load after downtime can take minutes;"
   echo "poll: scripts/mode.sh status  (curl :$PORT/v1/models until 200)"
 }
 
-mode_stop_all() { stop_llama_swap; stop_halogen; }
+mode_stop_all() { stop_llama_swap; stop_exclusive; }
 
 mode_status() {
   echo "llama-swap : $(pid_alive "$RUN/llama-swap.pid" && echo running || echo stopped)"
-  echo "halogen    : $(podman ps --format '{{.Names}}' 2>/dev/null | grep halogen | tr '\n' ' ')"
+  echo "exclusive  : $(podman ps --format '{{.Names}}' 2>/dev/null | grep -E "$EXCLUSIVE_CONTAINER_MATCH" | tr '\n' ' ')"
   echo "health     : HTTP $(health) on :$PORT"
   echo "memory     : $(free -h | awk 'NR==2{print $3" used / "$2" total"}')"
 }

@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
-# Build llama.cpp with ROCm/HIP for gfx1151 (Strix Halo) → ~/bin/llama-hip-server
-# HIP allocates from the FULL unified memory pool (122 GiB) unlike Vulkan's
-# 20.7 GiB device heap. Run via: scripts/jobs.sh run llama-hip scripts/install-llama-cpp-hip.sh
+# Build llama.cpp with ROCm/HIP on the serving box → ~/bin/llama-hip-server
+# HIP allocates from the FULL unified memory pool on APUs, unlike Vulkan's
+# small device heap. Set HIP_TARGETS for your GPU (default gfx1151).
+# Run via: scripts/jobs.sh run llama-hip scripts/install-llama-cpp-hip.sh
 set -euo pipefail
+
+hip_targets="${HIP_TARGETS:-gfx1151}"
 
 mkdir -p "$HOME/src" "$HOME/bin"
 cd "$HOME/src"
@@ -16,10 +19,10 @@ HIPCXX="$("$hipconfig" -l)/clang"
 HIP_PATH="$("$hipconfig" -R)"
 echo "[llama.cpp-HIP] HIPCXX=$HIPCXX HIP_PATH=$HIP_PATH"
 
-echo "[llama.cpp-HIP] configure (gfx1151)"
+echo "[llama.cpp-HIP] configure ($hip_targets)"
 rm -rf build-hip
 env HIPCXX="$HIPCXX" HIP_PATH="$HIP_PATH" \
-  cmake -B build-hip -DGGML_HIP=ON -DAMDGPU_TARGETS=gfx1151 \
+  cmake -B build-hip -DGGML_HIP=ON -DAMDGPU_TARGETS="$hip_targets" \
         -DCMAKE_BUILD_TYPE=Release -DLLAMA_CURL=OFF -DGGML_NATIVE=ON
 
 echo "[llama.cpp-HIP] build ($(nproc) jobs)"

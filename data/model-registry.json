@@ -1,5 +1,5 @@
 {
-  "_comment": "Model/quant registry for valhalla. llama-swap config (configs/llama-swap.yaml) references models by their 'serve_name'. Update both together, then scripts/deploy.sh.",
+  "_comment": "Model/quant registry for the serving box. llama-swap config (configs/llama-swap.yaml) references models by their 'serve_name'. Update both together, then scripts/deploy.sh.",
   "updated": "2026-10-01",
   "hardware_context": "Strix Halo gfx1151, 128 GB unified memory",
   "models": [
@@ -65,8 +65,8 @@
       "hf_include": "UD-Q4_K_XL/*",
       "hf_revision": "38bb39ee97821de2c9009abb7e93950eec396e66",
       "type": "moe-hybrid-gguf-gufo-local",
-      "role": "FLAGSHIP: gufo (valhalla fork valhalla/managed-fallback, local build) full native 262144 ctx, MTP; decode flat 29-35 t/s 4k-131k, 6/6 needles to 131k, 8/8 tools, 22s load",
-      "engine": "~/src/gufo/build/release/gufo (branch valhalla/managed-fallback: weights->hipMallocManaged, device pool for session state)",
+      "role": "FLAGSHIP: gufo local build, full native 262144 ctx, MTP; decode flat 29-35 t/s 4k-131k, 6/6 needles to 131k, 8/8 tools, 22s load",
+      "engine": "~/src/gufo/build/release/gufo (local build: weights->hipMallocManaged, device pool for session state)",
       "sibling": "gufo-flash-next-parallel (sessions 2 x 131072, same weights)"
     },
     {

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Throughput probe against any OpenAI-compatible endpoint (halogen, llama-swap).
+"""Throughput probe against any OpenAI-compatible endpoint.
 
 Streams a chat completion and reports TTFT (≈ prefill speed) and decode t/s.
 Prints one JSON object per repeat, then a final {"summary": {...}} line.
 
 Usage:
-  api_bench.py --url http://valhalla:8731 --model swift-1.5-27b-q8 \
+  api_bench.py --url http://<box>:8731 --model <served-name> \
                --ctx 16384 --gen 256 --repeat 3
 """
 import argparse

@@ -1,4 +1,4 @@
-# Working decisions — valhalla inference stack (2026-10-01)
+# Working decisions — unified-memory inference stack (2026-10-01)
 
 Measured on Strix Halo 128 GB (gfx1151), single-stream greedy (temp 0),
 agents at concurrency 1-2. Raw data in `results/`; table in `MATRIX.md`.
@@ -37,8 +37,8 @@ agents at concurrency 1-2. Raw data in `results/`; table in `MATRIX.md`.
 **gufo Flash-Next flagship (2026-10-01, the deep-dive result)**: the upstream
 container's ROCm runtime caps `hipMalloc` at the reported device pool (62.5 GiB
 = RAM/2+VRAM heuristic, independent of `amdgpu.gttsize=102400`), so its
-all-weights-to-device loader fails mid-load. Built gufo LOCALLY on branch
-`valhalla/managed-fallback` (~/src/gufo): weights allocate via
+all-weights-to-device loader fails mid-load. Built gufo LOCALLY (~/src/gufo,
+on a fork branch): weights allocate via
 `hipMallocManaged` (same physical DRAM on the APU; streamed read-only weights
 lose nothing), device pool stays reserved for session state/scratch so the
 state-capacity admission check passes. Verified with our harness:
@@ -51,8 +51,8 @@ state-capacity admission check passes. Verified with our harness:
   headroom even though the runtime cap ignores it
 - rebuild: `scripts/install-gufo-local.sh` (cmake --preset release + /opt/rocm)
 
-**gufo (2026-10-01 addition)**: MIT-licensed vertical Strix Halo engine
-(gufo-org/gufo), verified on valhalla with the 27B — promoted to daily driver.
+**gufo (2026-10-01 addition)**: MIT-licensed Strix Halo engine
+(gufo-org/gufo), verified on the box with the 27B — promoted to daily driver.
 Load ~19 s; TTFT 6 ms cached; per-request usage payload reports decode t/s,
 draft acceptance and cache stats. Mapped-GGUF host placement (PR #220).
 **Flash-Next on gufo is BLOCKED by our 62.5 GB GTT**: its loader device-places

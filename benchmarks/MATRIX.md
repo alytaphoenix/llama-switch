@@ -1,6 +1,6 @@
-# Benchmark matrix — valhalla
+# Benchmark matrix
 
-Decision table for serving configs on Strix Halo (128 GB, gfx1151).
+Decision table for serving configs on the target box.
 Raw data: `benchmarks/results/*.json`. Regenerate: `python3 benchmarks/matrix.py`.
 
 ## Throughput (OpenAI API probes)

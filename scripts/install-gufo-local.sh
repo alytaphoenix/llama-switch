@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# Build gufo from source (valhalla fork: managed-fallback branch) on valhalla.
-# Patches: hipMalloc -> hipMallocManaged fallback (escapes the 62.5 GiB runtime
-# device-pool cap on our APU so Flash-Next UD-Q4_K_XL fits at full context).
-# Run via: scripts/jobs.sh run gufo-local scripts/install-gufo-local.sh
+# Build gufo from source on the serving box.
+# Set GUFO_BRANCH to use a fork/feature branch (default: main).
+# Run via: scripts/jobs.sh run gufo scripts/install-gufo-local.sh
 set -euo pipefail
 
+gufo_branch="${GUFO_BRANCH:-main}"
+
 cd "$HOME/src/gufo"
-git checkout valhalla/managed-fallback 2>/dev/null || true
+git checkout "$gufo_branch" 2>/dev/null || true
 git log --oneline -1
 
 echo "[gufo] configure (release, /opt/rocm)"

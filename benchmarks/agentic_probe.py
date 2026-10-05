@@ -5,7 +5,7 @@ Sends N "weather check" style requests with tool definitions and scores
 whether the model emits a correct tool call (name + required arg present).
 Non-streaming; one JSON line per trial, then a {"summary": {...}} line.
 
-Usage: agentic_probe.py --url http://valhalla:8731 --model swift-1.5-27b-q8 --repeat 8
+Usage: agentic_probe.py --url http://<box>:8731 --model <served-name> --repeat 8
 """
 import argparse
 import json

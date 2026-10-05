@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Programmatic model-switch API for valhalla:8731 (llama-swap flex mode).
+# Programmatic model-switch API for the serving box (llama-swap flex mode).
 #
 #   scripts/switch.sh status            → currently loaded models
 #   scripts/switch.sh list              → all configured models + state
@@ -9,16 +9,16 @@
 #
 # In flex mode switching is also implicit: send any request with
 # "model": "<serve_name-or-alias>" and llama-swap swaps processes for you.
-# (Halogen mode serves a fixed model; use scripts/mode.sh to change modes.)
+# (Exclusive mode serves a fixed model; use scripts/mode.sh to change modes.)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # shellcheck source=scripts/env.sh
 source scripts/env.sh
-base="http://$VALHALLA_ADDR:$VALHALLA_API_PORT"
+base="http://$LS_ADDR:$LS_API_PORT"
 
 code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$base/v1/models" || echo 000)
 if [ "$code" != "200" ]; then
-  echo "nothing healthy on :$VALHALLA_API_PORT (HTTP $code) — check: scripts/mode.sh status" >&2
+  echo "nothing healthy on :$LS_API_PORT (HTTP $code) — check: scripts/mode.sh status" >&2
   exit 1
 fi
 
