@@ -25,13 +25,16 @@ base="http://$VALHALLA_ADDR:$VALHALLA_API_PORT"
 die() { echo "api.sh: $1" >&2; exit "${2:-4}"; }
 
 # GET/POST helper: bodies to stdout, HTTP status checked, never retries.
+# Branch on curl's own exit status — on transport failure curl still prints
+# "000" via -w, so appending || echo 000 would corrupt the code, not flag it.
 req() {
-  local method="$1" path="$2" timeout="${3:-10}" code
-  code=$(curl -s -o /tmp/llama-switch-api.$$ -w '%{http_code}' \
-        -X "$method" --max-time "$timeout" "$base$path" || echo 000)
-  local body; body=$(cat /tmp/llama-switch-api.$$ 2>/dev/null || true); rm -f /tmp/llama-switch-api.$$
-  if [ "$code" = "000" ]; then die "unreachable: $base" 2; fi
-  if [ "$code" -lt 200 ] 2>/dev/null || [ "$code" -ge 300 ] 2>/dev/null; then
+  local method="$1" path="$2" timeout="${3:-10}" tmp code body rc=0
+  tmp=$(mktemp)
+  code=$(curl -s -o "$tmp" -w '%{http_code}' -X "$method" \
+         --max-time "$timeout" "$base$path") || rc=$?
+  body=$(cat "$tmp" 2>/dev/null); rm -f "$tmp"
+  if [ "$rc" -ne 0 ]; then die "unreachable (curl exit $rc): $base" 2; fi
+  if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
     die "HTTP $code from $path" 4
   fi
   printf '%s' "$body"
@@ -39,7 +42,7 @@ req() {
 
 case "${1:-}" in
   health)
-    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$base/health" || echo 000)
+    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$base/health") || code=000
     [ "$code" = "200" ] || { echo "api.sh: health -> HTTP $code" >&2; exit 2; }
     ;;
   status)   req GET /running ;;
