@@ -5,9 +5,16 @@ models at once.
 
 **llama-switch** is an ops-and-benchmark layer for local LLM inference on
 unified-memory machines (developed against a 128 GiB AMD Strix Halo — Ryzen
-AI Max+ 395, Radeon 8060S / gfx1151, LPDDR5X shared by CPU and iGPU). It wraps
-[llama-swap](https://github.com/mostlygeek/llama-swap) with:
+AI Max+ 395, Radeon 8060S / gfx1151, LPDDR5X shared by CPU and iGPU). It puts
+**its own front door on the API port** and wraps
+[llama-swap](https://github.com/mostlygeek/llama-swap) behind it, adding:
 
+- **a front proxy** — `scripts/remote-proxy.py` binds the public port and
+  forwards to llama-swap on an internal loopback port, making llama-swap an
+  implementation detail rather than the thing clients talk to;
+- **a default model** — requests that carry no `model` field are served by a
+  configured default instead of 404ing, which is what lets one port hold a
+  primary model plus a set of alternates;
 - **mode machinery** — exclusive server stacks (an on-demand GGUF flex stack,
   a single heavyweight container engine) behind one never-changing port,
   switched with one command;
@@ -50,14 +57,20 @@ measurable.
         │
         ▼
   ┌────────────────────────────────────────────────────────────┐
-  │  llama-swap (flex mode)                                    │
+  │  llama-switch front proxy (our code)                        │
+  │  binds :8731, injects the default model when a request     │
+  │  has none, streams everything else through untouched       │
+  └────────────────────────────────────────────────────────────┘
+        │  forwards to
+        ▼
+  ┌────────────────────────────────────────────────────────────┐
+  │  llama-swap (flex mode), on 127.0.0.1:8732                 │
   │  routes by requested "model" name, starts/stops engine     │
   │  processes on demand, TTL auto-unload, exclusive groups    │
   └────────────────────────────────────────────────────────────┘
         │  spawns on demand
         ▼
-  engine processes   llama-server (Vulkan/HIP) · ik-llama-server
-                     gufo (local build or container) · ...
+  engine processes   gufo (local build) · llama-server · ik-llama-server · ...
 ```
 
 Two exclusive **modes** share the port — only one is ever up:
@@ -83,6 +96,62 @@ cleans up stray ad-hoc servers first (a leftover test server OOMs the next
 load). `scripts/switch.sh status|list|load|unload|switch` drives models
 inside flex mode; or just send any request with the model name you want.
 
+## The front proxy and the default model
+
+llama-swap answers a request whose body has no usable `model` field with
+`404 no model id could be identified`. That is a papercut for a
+single-primary deployment: you want a default *and* the alternates on the same
+port.
+
+Rather than wait for a feature in whichever llama-swap build is installed,
+llama-switch owns the public port and injects the default itself:
+
+```sh
+LS_DEFAULT_MODEL=gufo-flash-next scripts/mode.sh flex
+```
+
+```sh
+# no "model" field → served by gufo-flash-next
+curl -s localhost:8731/v1/chat/completions -H 'Content-Type: application/json' \
+  -d '{"messages":[{"role":"user","content":"hi"}]}'
+
+# explicit "model" always wins
+curl -s localhost:8731/v1/chat/completions -H 'Content-Type: application/json' \
+  -d '{"model":"gufo-27b-q4","messages":[]}'
+```
+
+With `LS_DEFAULT_MODEL` unset the proxy is a pure pass-through and behaviour is
+unchanged.
+
+The injection is deliberately narrow, because a proxy that rewrites requests
+can corrupt them:
+
+| Request | Injected? |
+|---|---|
+| JSON POST with no / empty / null `model` | yes |
+| JSON POST with an explicit `model` | no — explicit always wins |
+| `multipart/form-data` (ASR uploads, image edits) | no — the body is streamed byte-for-byte, and these endpoints always send `model` explicitly |
+| `GET` (e.g. `/v1/models`) | no |
+| `/upstream/<model>/...` | no — the path already names the model |
+
+Responses stream in both directions, so a streaming chat completion keeps its
+time-to-first-token (`scripts/remote-proxy.py` uses `read1`, not `read(n)`,
+which would block until a full chunk arrived). Bodies that are not injected are
+forwarded as a stream rather than buffered, so a large upload is never held in
+proxy memory. When the proxy substituted a model it says so:
+
+```
+X-Llama-Switch-Default-Model: gufo-flash-next
+```
+
+If llama-swap itself is down the proxy returns `502` with an OpenAI-shaped
+error envelope rather than a bare connection reset.
+
+Tests: `python3 tests/test_remote_proxy.py` (unit coverage for the injection
+rules plus an end-to-end run against a stub backend covering default
+injection, explicit-model precedence, multipart integrity, SSE incremental
+relay and the 502 path).
+
 ## Layout
 
 ```
@@ -90,6 +159,7 @@ scripts/
   env.sh                  shared config (host alias, LAN address, port, paths)
   survey.sh               read-only hardware/runtime survey of the box
   deploy.sh               rsync repo + configs to the box (configs rendered)
+  remote-proxy.py         the front proxy: owns :8731, injects the default model
   mode.sh                 flex|exclusive|status|stop-all (+ stray cleanup)
   switch.sh               status|list|load|unload|switch (programmatic switching)
   api.sh                  machine-readable twin of switch.sh (raw JSON + exit codes)
@@ -106,6 +176,8 @@ scripts/
   install-gufo-local.sh   gufo from source (GUFO_BRANCH=… for forks)
   download-models.sh      hf CLI bootstrap + revision-pinned weight downloads
   bench.sh                the full probe suite against whatever serves the port
+tests/
+  test_remote_proxy.py    unit + end-to-end tests for the front proxy
 benchmarks/
   api_bench.py            TTFT + decode t/s at a given prompt size (streaming)
   needle_probe.py         needle-in-a-haystack at depths (long-context accuracy)
@@ -127,7 +199,9 @@ Prereqs: a Linux box with a ROCm-capable GPU, your SSH alias to it in
 `~/.ssh/config`, podman or docker, and this repo on your client machine.
 
 ```sh
-# 0) configure scripts/env.sh (host alias + LAN address + port)
+# 0) configure scripts/env.sh (host alias + LAN address + port) and pick the
+#    model that answers requests which name no model
+export LS_DEFAULT_MODEL=gufo-flash-next
 
 # 1) survey the box (read-only)
 scripts/survey.sh
@@ -147,6 +221,7 @@ scripts/deploy.sh
 scripts/mode.sh flex
 scripts/switch.sh list
 scripts/switch.sh switch <model-id>     # or just send requests
+scripts/api.sh default                  # what a model-less request will get
 
 # 6) benchmark whatever is serving
 MODEL=<served-name> scripts/bench.sh
@@ -164,7 +239,10 @@ Everything is overridable by exporting a variable before running a script
 |---|---|---|
 | `LS_HOST` | `llm_server` | SSH alias for the box |
 | `LS_ADDR` | `$LS_HOST` | HTTP address resolvable from the client (IP/mDNS) |
-| `LS_API_PORT` | `8731` | the one and only API port |
+| `LS_API_PORT` | `8731` | the one and only API port (the proxy's) |
+| `LS_BACKEND_PORT` | `8732` | llama-swap's internal loopback port |
+| `LS_DEFAULT_MODEL` | *(empty)* | model served when a request carries none; empty = pass-through |
+| `LS_PROXY_HOST` | `0.0.0.0` | bind address for the public port |
 | `LS_REMOTE_ROOT` | `llama-switch` | remote `~/` subdirectory for repo/etc/run/logs/models |
 | `EXCLUSIVE_COMPOSE_DIR` | `$LS_REMOTE_ROOT/stack` | podman-compose dir of the exclusive engine |
 | `EXCLUSIVE_SYSTEMD_UNIT` | `podman-compose@exclusive.service` | optional systemd unit wrapping it |
@@ -223,6 +301,16 @@ Everything below cost real time — encoded here so it costs none of yours:
    pipe (SIGPIPE deadlocks any thread barrier).
 7. **Vulkan's device heap on iGPUs is the BIOS carve-out**, not unified
    memory — 20 GiB-ish on a 128 GiB box. Big models need HIP.
+8. **A proxy that buffers a streamed response destroys TTFT.** The front proxy
+   reads the backend with `read1`, not `read(n)`: `read(n)` blocks until it
+   has `n` bytes, so a client would see nothing until the whole generation
+   finished. `tests/test_remote_proxy.py` guards this.
+9. **If you buffer a request body to inspect it, forward the buffered copy.**
+   Pairing an already-drained reader with the original `Content-Length` makes
+   the backend wait forever for bytes that were consumed — a hang that looks
+   exactly like a stuck model. Also covered by the tests.
+10. **Stop the proxy before llama-swap on a shared port.** The proxy owns the
+    public port; `mode_flex` releases it in order rather than racing the bind.
 
 ## Roadmap
 
@@ -234,6 +322,9 @@ Everything below cost real time — encoded here so it costs none of yours:
 - [ ] Upstream the managed-fallback patch (with the allocation diagnostics)
 - [ ] Utility-model slots (embeddings/reranker) running concurrently with the
   loaded flagship
+- [ ] Consider a small resident pool of cheap models (ASR/TTS-style) so the
+  proxy can serve them without a swap, now that one group no longer has to
+      mean "exactly one model"
 
 ## License
 

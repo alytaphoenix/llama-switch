@@ -13,12 +13,19 @@ set -u
 : "${LS_ADDR:=$LS_HOST}"
 : "${LS_SSH_OPTS:=-o BatchMode=yes -o ConnectTimeout=8}"
 
-# ------------------------------------------------------- one port, two modes
-# Flex mode  : llama-swap (on-demand GGUF models)   listens on this port
-# Exclusive : a single heavyweight serving stack (container, e.g.
-#              halogen-flash-server) binds the same port
+# ------------------------------------------------------------ one port, two modes
+# Flex mode  : llama-swap + the llama-switch front proxy   listens on this port
+# Exclusive : a single heavyweight serving stack (container) binds the same port
 # Only one stack runs at a time, so clients always use the same URL.
 : "${LS_API_PORT:=8731}"
+
+# ------------------------------------------------------- front proxy (our code)
+# The proxy owns LS_API_PORT and forwards to llama-swap on LS_BACKEND_PORT.
+# LS_DEFAULT_MODEL is served when a request carries no "model" field; empty
+# means pure passthrough (llama-swap then 404s such a request).
+: "${LS_BACKEND_PORT:=8732}"
+: "${LS_DEFAULT_MODEL:=}"
+: "${LS_PROXY_HOST:=0.0.0.0}"
 
 # ------------------------------------------------- remote layout (~ relative)
 : "${LS_REMOTE_ROOT:=llama-switch}"
