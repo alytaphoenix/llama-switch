@@ -9,6 +9,7 @@
 #   scripts/api.sh health            -> exit 0 iff :8731 answers 200
 #   scripts/api.sh status            -> GET /running (JSON)
 #   scripts/api.sh models            -> GET /v1/models (JSON, per-model status)
+#   scripts/api.sh default           -> the configured default model (raw string)
 #   scripts/api.sh metrics <model>   -> GET /upstream/<model>/metrics (raw text)
 #   scripts/api.sh load <model>      -> load ahead, no inference (long timeout)
 #   scripts/api.sh unload [model]    -> unload one model, or all if omitted
@@ -16,6 +17,9 @@
 #
 # Every target is env-overridable before sourcing env.sh:
 #   LS_ADDR=<ip> LS_API_PORT=8731 scripts/api.sh status
+#
+# LS_DEFAULT_MODEL is only read by `default`; the other calls ask the running
+# proxy, which already has it.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # shellcheck source=scripts/env.sh
@@ -47,6 +51,15 @@ case "${1:-}" in
     ;;
   status)   req GET /running ;;
   models)   req GET /v1/models ;;
+  # The proxy's default model is local config, not a backend query: answer from
+  # the same value it was started with, and exit 3 if unset so automation can
+  # branch on "there is no default" without parsing an empty string.
+  default)
+    if [ -z "$LS_DEFAULT_MODEL" ]; then
+      echo "api.sh: no default model configured" >&2; exit 3
+    fi
+    printf '%s' "$LS_DEFAULT_MODEL"
+    ;;
   metrics)  model="${2:?usage: api.sh metrics <model>}"; req GET "/upstream/$model/metrics" 30 ;;
   load)
     model="${2:?usage: api.sh load <model>}"
@@ -63,7 +76,7 @@ case "${1:-}" in
     req GET /running
     ;;
   *)
-    echo "usage: $0 health|status|models|metrics <model>|load <model>|unload [model]|switch <model>" >&2
+    echo "usage: $0 health|status|models|default|metrics <model>|load <model>|unload [model]|switch <model>" >&2
     exit 3
     ;;
 esac

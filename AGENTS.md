@@ -22,6 +22,21 @@ client machine.
 
 ## Facts that live in the code
 
+- **The front proxy owns the public port.** `scripts/remote-proxy.py` binds
+  `LS_API_PORT` (8731) and forwards to llama-swap on `LS_BACKEND_PORT`
+  (8732, loopback only). llama-swap is an internal detail — never advertise it
+  or bind it publicly.
+- **`LS_DEFAULT_MODEL` is llama-switch's own feature.** llama-swap 404s a
+  request with no `model` field, so the proxy injects a configured default.
+  Injection is narrow on purpose: JSON POSTs only, never `multipart/form-data`
+  (ASR/image uploads always send `model` and rewriting the boundary corrupts
+  them), never `GET`, never `/upstream/<model>`. An explicit `model` always
+  wins. Tests: `python3 tests/test_remote_proxy.py`.
+- **Never buffer a streamed response.** The proxy reads the backend with
+  `read1`, not `read(n)`; `read(n)` blocks until it has `n` bytes and would
+  turn a streaming completion's TTFT into total latency. Likewise, if a request
+  body was buffered to inspect it, forward the buffered copy — a drained
+  reader plus the original `Content-Length` hangs the backend forever.
 - One port for everything (`LS_API_PORT`, default 8731). Clients never
   reconfigure.
 - Two exclusive modes share the port: **flex** (llama-swap, on-demand GGUF)

@@ -10,7 +10,12 @@ ETC="$ROOT/etc"
 RUN="$ROOT/run"
 LOGS="$ROOT/logs"
 BIN="$HOME/bin"
+# Public port: the llama-switch front proxy. llama-swap moves behind it.
 PORT="${LS_API_PORT:-8731}"
+BACKEND_PORT="${LS_BACKEND_PORT:-8732}"
+DEFAULT_MODEL="${LS_DEFAULT_MODEL:-}"
+PROXY_HOST="${LS_PROXY_HOST:-0.0.0.0}"
+PROXY="$REPO/scripts/remote-proxy.py"
 
 # The exclusive stack (podman-compose, optionally a systemd user unit).
 # Overridable via the environment when this file is sourced.
@@ -24,6 +29,9 @@ pid_alive() { [ -f "$1" ] && kill -0 "$(cat "$1")" 2>/dev/null; }
 
 health() { curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/v1/models" 2>/dev/null || echo 000; }
 
+# Health of llama-swap itself, i.e. what the proxy forwards to.
+backend_health() { curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$BACKEND_PORT/v1/models" 2>/dev/null || echo 000; }
+
 stop_llama_swap() {
   if pid_alive "$RUN/llama-swap.pid"; then
     kill "$(cat "$RUN/llama-swap.pid")" 2>/dev/null || true
@@ -34,6 +42,46 @@ stop_llama_swap() {
   else
     echo "llama-swap not running"
   fi
+}
+
+# The front proxy owns the public port, so it must be stopped (and :$PORT
+# freed) before anything else can bind it.
+stop_proxy() {
+  if pid_alive "$RUN/proxy.pid"; then
+    kill "$(cat "$RUN/proxy.pid")" 2>/dev/null || true
+    for _ in 1 2 3 4 5 6 7 8 9 10; do pid_alive "$RUN/proxy.pid" || break; sleep 0.5; done
+    pid_alive "$RUN/proxy.pid" && kill -9 "$(cat "$RUN/proxy.pid")" 2>/dev/null
+    rm -f "$RUN/proxy.pid"
+    echo "llama-switch proxy stopped"
+  else
+    echo "llama-switch proxy not running"
+  fi
+}
+
+start_proxy() {
+  if pid_alive "$RUN/proxy.pid"; then echo "llama-switch proxy already running"; return 0; fi
+  if [ ! -f "$PROXY" ]; then
+    echo "ERROR: $PROXY missing — run scripts/deploy.sh" >&2
+    return 1
+  fi
+  if [ "$(backend_health)" != "200" ]; then
+    echo "ERROR: llama-swap backend unhealthy on :$BACKEND_PORT (HTTP $(backend_health))" >&2
+    return 1
+  fi
+  nohup python3 "$PROXY" \
+      --listen-host "$PROXY_HOST" --listen-port "$PORT" \
+      --backend-host 127.0.0.1 --backend-port "$BACKEND_PORT" \
+      --default-model "$DEFAULT_MODEL" \
+      >>"$LOGS/proxy.log" 2>&1 &
+  echo $! > "$RUN/proxy.pid"
+  # Confirm it really answers before claiming the port is up.
+  for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+    [ "$(health)" = "200" ] && { echo "llama-switch proxy started (pid $(cat "$RUN/proxy.pid"))"; return 0; }
+    pid_alive "$RUN/proxy.pid" || break
+    sleep 0.5
+  done
+  echo "ERROR: llama-switch proxy did not come up on :$PORT (see $LOGS/proxy.log)" >&2
+  return 1
 }
 
 exclusive_running() { podman ps --format '{{.Names}}' 2>/dev/null | grep -E -q "$EXCLUSIVE_CONTAINER_MATCH"; }
@@ -70,10 +118,10 @@ start_llama_swap() {
     echo "ERROR: $ETC/llama-swap.yaml missing — run scripts/deploy.sh" >&2
     return 1
   fi
-  nohup "$BIN/llama-swap" --config "$ETC/llama-swap.yaml" --listen "0.0.0.0:$PORT" \
+  nohup "$BIN/llama-swap" --config "$ETC/llama-swap.yaml" --listen "127.0.0.1:$BACKEND_PORT" \
     >>"$LOGS/llama-swap.log" 2>&1 &
   echo $! > "$RUN/llama-swap.pid"
-  echo "llama-swap started (pid $(cat "$RUN/llama-swap.pid"))"
+  echo "llama-swap started (pid $(cat "$RUN/llama-swap.pid")) on :$BACKEND_PORT"
 }
 
 start_exclusive() {
@@ -109,28 +157,38 @@ kill_stray_servers() {
 
 mode_flex() {
   stop_exclusive
+  # Order matters: the proxy owns :$PORT, so release it before llama-swap
+  # claims the backend port, and bring the proxy up only once the backend is
+  # healthy.
+  stop_proxy
   stop_llama_swap
   kill_stray_servers
   start_llama_swap || return 1
   for _ in $(seq 1 30); do
-    [ "$(health)" = "200" ] && { echo "flex mode healthy on :$PORT"; return 0; }
+    [ "$(backend_health)" = "200" ] && break
     sleep 1
   done
-  echo "WARN: llama-swap up but :$PORT health not 200 yet (check $LOGS/llama-swap.log)"
+  if [ "$(backend_health)" != "200" ]; then
+    echo "WARN: llama-swap up but :$BACKEND_PORT health not 200 yet (check $LOGS/llama-swap.log)"
+  fi
+  start_proxy || return 1
+  echo "flex mode healthy on :$PORT (proxy -> llama-swap :$BACKEND_PORT, default=${DEFAULT_MODEL:-none})"
 }
 
 mode_exclusive() {
+  stop_proxy
   stop_llama_swap
   start_exclusive || return 1
   echo "exclusive stack starting — first load after downtime can take minutes;"
   echo "poll: scripts/mode.sh status  (curl :$PORT/v1/models until 200)"
 }
 
-mode_stop_all() { stop_llama_swap; stop_exclusive; }
+mode_stop_all() { stop_proxy; stop_llama_swap; stop_exclusive; }
 
 mode_status() {
-  echo "llama-swap : $(pid_alive "$RUN/llama-swap.pid" && echo running || echo stopped)"
-  echo "exclusive  : $(podman ps --format '{{.Names}}' 2>/dev/null | grep -E "$EXCLUSIVE_CONTAINER_MATCH" | tr '\n' ' ')"
-  echo "health     : HTTP $(health) on :$PORT"
-  echo "memory     : $(free -h | awk 'NR==2{print $3" used / "$2" total"}')"
+  echo "proxy       : $(pid_alive "$RUN/proxy.pid" && echo "running (pid $(cat "$RUN/proxy.pid"))" || echo stopped)  default=${DEFAULT_MODEL:-none}"
+  echo "llama-swap  : $(pid_alive "$RUN/llama-swap.pid" && echo "running on :$BACKEND_PORT" || echo stopped)"
+  echo "exclusive   : $(podman ps --format '{{.Names}}' 2>/dev/null | grep -E "$EXCLUSIVE_CONTAINER_MATCH" | tr '\n' ' ')"
+  echo "health      : HTTP $(health) on :$PORT (public)"
+  echo "memory      : $(free -h | awk 'NR==2{print $3" used / "$2" total"}')"
 }
