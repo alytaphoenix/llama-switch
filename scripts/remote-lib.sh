@@ -4,9 +4,16 @@
 # shellcheck shell=bash
 set -u
 
-ROOT="$HOME/llama-switch"
+# The remote root is overridable so a box can keep its own layout (e.g. an
+# existing ~/valhalla with models symlinked to /srv) instead of a second
+# parallel tree.
+ROOT="$HOME/${LS_REMOTE_ROOT:-llama-switch}"
 REPO="$ROOT/repo"
-ETC="$ROOT/etc"
+# The config directory is overridable independently of ROOT. A box usually owns
+# its llama-swap.yaml (real weight paths, tuning) while using these scripts, so
+# LS_REMOTE_ETC points at the box's config without this repo taking ownership of
+# it -- deploying ours over theirs would silently change a serving box.
+ETC="${LS_REMOTE_ETC:-$ROOT/etc}"
 RUN="$ROOT/run"
 LOGS="$ROOT/logs"
 BIN="$HOME/bin"
