@@ -8,6 +8,25 @@ set -u
 # existing ~/valhalla with models symlinked to /srv) instead of a second
 # parallel tree.
 ROOT="$HOME/${LS_REMOTE_ROOT:-llama-switch}"
+
+# Box settings live on the box. Anything that must survive an ssh into a fresh
+# shell -- which model answers a request that names no model, where the box's
+# config lives -- belongs in a settings file here, not in the environment of
+# whoever happened to run mode.sh. Sourced before the settings below are
+# resolved, so box.env can set any of them.
+#
+# $HOME/.llama-switch.box.env is listed first and is independent of ROOT: a box
+# whose root is not ~/llama-switch would otherwise be unable to configure the
+# root in the first place, and a file inside ROOT/repo would be deleted by the
+# next deploy (rsync --delete).
+for _boxenv in "$HOME/.llama-switch.box.env" "$ROOT/box.env" "$ROOT/etc/box.env"; do
+  if [ -f "$_boxenv" ]; then
+    # shellcheck disable=SC1090
+    . "$_boxenv"
+  fi
+done
+unset _boxenv
+
 REPO="$ROOT/repo"
 # The config directory is overridable independently of ROOT. A box usually owns
 # its llama-swap.yaml (real weight paths, tuning) while using these scripts, so
