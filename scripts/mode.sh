@@ -12,7 +12,17 @@ require_remote
 
 remote_fn() {
   local fn="$1"
-  v "bash -c 'source $LS_REMOTE_REPO/scripts/remote-lib.sh && $fn'"
+  # The remote shell is fresh, so the settings that decide where the stack
+  # listens and what the default model is have to be carried across explicitly.
+  # Quoted with %q so a path or value with spaces survives.
+  local fwd=()
+  local name
+  for name in LS_REMOTE_ROOT LS_REMOTE_ETC LS_API_PORT LS_BACKEND_PORT \
+              LS_DEFAULT_MODEL LS_PROXY_HOST EXCLUSIVE_COMPOSE_DIR \
+              EXCLUSIVE_SYSTEMD_UNIT EXCLUSIVE_CONTAINER_MATCH; do
+    fwd+=("$(printf '%s=%q' "$name" "${!name}")")
+  done
+  v "env $(printf '%s ' "${fwd[@]}") bash -c 'source $LS_REMOTE_REPO/scripts/remote-lib.sh && $fn'"
 }
 
 case "${1:-}" in
